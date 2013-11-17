@@ -1,5 +1,6 @@
 module Ridge.Core where
 import Ridge.Types
+import qualified Ridge.Vector as RV
 import Control.Monad
 import qualified Data.ByteString as B
 import qualified Data.Map as M
@@ -11,14 +12,13 @@ eq = bool . all (uncurry (==)) . (zip `ap` drop 1)
 first :: Object -> Object
 first (List []) = nil
 first (List (a:_)) = a
-first (Vector []) = nil
-first (Vector (a:_)) = a
+first (Vector v) = case RV.get 0 v of
+  Just x -> x
+  Nothing -> nil
 
 rest :: Object -> Object
 rest (List []) = List []
 rest (List (_:xs)) = List xs
-rest (Vector []) = Vector []
-rest (Vector (_:xs)) = Vector xs
 
 get :: Object -> Object -> Object
 get (Map m) k = case M.lookup k m of

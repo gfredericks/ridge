@@ -1,15 +1,17 @@
 module Ridge.Types where
 import qualified Data.EDN as EDN
+import Data.Functor
 import qualified Data.List as L
 import qualified Data.Vector as V
 import qualified Data.Map as M
 import qualified Data.ByteString as B
+import qualified Ridge.Vector as RV
 
 data Object =
   Nil |
   Integer Integer |
   List [Object] |
-  Vector [Object] |
+  Vector (RV.Vector Object) |
   Map (M.Map Object Object) |
   Symbol B.ByteString |
   Keyword B.ByteString |
@@ -42,7 +44,7 @@ instance Objectifiable EDN.Value where
   toObject (EDN.Symbol _ s) = Symbol s
   toObject (EDN.Keyword s) = Keyword s
   toObject (EDN.List xs) = List $ map toObject xs
-  toObject (EDN.Vec v) = Vector $ map toObject (V.toList v)
+  toObject (EDN.Vec v) = Vector $ RV.fromList $ map toObject (V.toList v)
   toObject (EDN.Map m) = Map $ M.map toObject $ M.mapKeys toObject m
   toObject (EDN.Nil) = Nil
   -- toObject (EDN.String s) = String s
@@ -51,7 +53,7 @@ instance Show Object where
   show Nil = "nil"
   show (Integer x) = show x
   show (List xs) = "(" ++ (unwords (map show xs)) ++ ")"
-  show (Vector xs) = "[" ++ (unwords (map show xs)) ++ "]"
+  show (Vector v) = "[" ++ (unwords $ RV.toList (fmap show v)) ++ "]"
   show (Map m) = "{" ++ (L.intercalate ", " (map f $ M.toList m)) ++ "}"
     where f (k,v) = (show k) ++ " " ++ (show v)
   show (Symbol s) = reverse $ tail $ reverse $ tail $ show s

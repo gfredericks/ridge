@@ -2,10 +2,12 @@
 module Ridge where
 import Ridge.Core
 import Ridge.Types
+import qualified Ridge.Vector as RV
 import Control.Exception
 import Control.Monad
 import qualified Data.EDN as EDN
 import qualified Data.Map as M
+import Data.Functor
 import Data.Maybe
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
@@ -122,7 +124,7 @@ evalExpr env x@(Nil) = x
 --
 evalExpr env (Map m) =
   Map $ M.map (evalExpr env) $ M.mapKeys (evalExpr env) m
-evalExpr env (Vector xs) = Vector (map (evalExpr env) xs)
+evalExpr env (Vector v) = Vector (fmap (evalExpr env) v)
 
 --
 -- Special evalExpr types -- lists and symbols
@@ -160,8 +162,9 @@ evalFuncall env verb args =
 
 evalExprFn :: Env -> Object -> Object -> Object
 evalExprFn env argvec expr =
-  let Vector arglist = argvec
-      names = map (\ (Symbol name) -> name) arglist
+  let Vector arglist' = argvec
+      arglist = RV.toList arglist'
+      names = fmap (\ (Symbol name) -> name) arglist
   in Function (\args ->
                 let env' = foldl (\env (name, value) -> M.insert name (Value value) env) env $ zip names args
                 in evalExpr env' expr)
