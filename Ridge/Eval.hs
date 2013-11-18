@@ -121,5 +121,8 @@ evalExprFn env clauses =
 
 evalExprIf :: Env -> Object -> Object -> Object -> Object
 evalExprIf env cond trueCase falseCase =
-  let (Boolean b) = evalExpr env cond
+  let b = case evalExpr env cond of
+        Boolean False -> False
+        Nil -> False
+        _ -> True
   in if b then evalExpr env trueCase else evalExpr env falseCase
