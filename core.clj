@@ -138,3 +138,29 @@
               (let (rest (rest bindings))))
         (first (rest bindings)))))
    (vec2list bindings)))
+
+(defmacro and
+  [& exprs]
+  (if (= () exprs)
+    true
+    (if (= () (rest exprs))
+      (first exprs)
+      (list (quote let)
+            (vector (quote val) (first exprs))
+            (list (quote if)
+                  (quote val)
+                  (list* (quote and) (rest exprs))
+                  (quote val))))))
+
+(defmacro or
+  [& exprs]
+  (if (= () exprs)
+    false
+    (if (= () (rest exprs))
+      (first exprs)
+      (list (quote let)
+            (vector (quote val) (first exprs))
+            (list (quote if)
+                  (quote val)
+                  (quote val)
+                  (list* (quote or) (rest exprs)))))))
