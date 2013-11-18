@@ -5,7 +5,12 @@ import qualified Data.List as L
 import qualified Data.Vector as V
 import qualified Data.Map as M
 import qualified Data.ByteString as B
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Ridge.Vector as RV
+
+bs2text :: B.ByteString -> T.Text
+bs2text = TE.decodeUtf8
 
 data Object =
   Nil |
@@ -13,23 +18,37 @@ data Object =
   List [Object] |
   Vector (RV.Vector Object) |
   Map (M.Map Object Object) |
-  Symbol B.ByteString |
-  Keyword B.ByteString |
-  String B.ByteString |
+  Symbol T.Text |
+  SymbolNS T.Text T.Text |
+  Keyword T.Text |
+  String T.Text |
   Boolean Bool |
   Function ([Object] -> Object)
 
+tNil      = Symbol "Nil"
+tInteger  = Symbol "Integer"
+tList     = Symbol "List"
+tVector   = Symbol "Vector"
+tMap      = Symbol "Map"
+tSymbol   = Symbol "Symbol"
+tSymbolNS = Symbol "Symbol"
+tKeyword  = Symbol "Keyword"
+tString   = Symbol "String"
+tBoolean  = Symbol "Boolean"
+tFunction = Symbol "Function"
+
 objectType :: Object -> Object
-objectType Nil = Symbol "Nil"
-objectType (Integer _) = Symbol "Integer"
-objectType (List _) = Symbol "List"
-objectType (Vector _) = Symbol "Vector"
-objectType (Map _) = Symbol "Map"
-objectType (Symbol _) = Symbol "Symbol"
-objectType (Keyword _) = Symbol "Keyword"
-objectType (String _) = Symbol "String"
-objectType (Boolean _) = Symbol "Boolean"
-objectType (Function _) = Symbol "Function"
+objectType Nil            = tNil
+objectType (Integer _)    = tInteger
+objectType (List _)       = tList
+objectType (Vector _)     = tVector
+objectType (Map _)        = tMap
+objectType (Symbol _)     = tSymbol
+objectType (SymbolNS _ _) = tSymbol
+objectType (Keyword _)    = tKeyword
+objectType (String _)     = tString
+objectType (Boolean _)    = tBoolean
+objectType (Function _)   = tFunction
 
 
 class Objectifiable x where
@@ -41,13 +60,15 @@ instance Objectifiable t => Objectifiable (EDN.Tagged t) where
 
 instance Objectifiable EDN.Value where
   toObject (EDN.Integer x) = Integer x
-  toObject (EDN.Symbol _ s) = Symbol s
-  toObject (EDN.Keyword s) = Keyword s
+  toObject (EDN.Symbol "" s) = Symbol $ bs2text s
+  toObject (EDN.Symbol ns s) = SymbolNS (bs2text ns) (bs2text s)
+  toObject (EDN.Keyword s) = Keyword (bs2text s)
   toObject (EDN.List xs) = List $ map toObject xs
   toObject (EDN.Vec v) = Vector $ RV.fromList $ map toObject (V.toList v)
   toObject (EDN.Map m) = Map $ M.map toObject $ M.mapKeys toObject m
+  toObject (EDN.Boolean b) = Boolean b
   toObject (EDN.Nil) = Nil
-  -- toObject (EDN.String s) = String s
+  toObject (EDN.String s) = String s
 
 instance Show Object where
   show Nil = "nil"
@@ -59,6 +80,9 @@ instance Show Object where
   show (Symbol s) = reverse $ tail $ reverse $ tail $ show s
   show (Keyword s) = ":" ++ (reverse $ tail $ reverse $ tail $ show s)
   show (Function _) = "#<Function>"
+  show (Boolean True) = "true"
+  show (Boolean False) = "false"
+  show (String s) = show s
 
 instance Num Object where
   (Integer a) + (Integer b) = Integer (a + b)
@@ -94,15 +118,18 @@ instance Eq Object where
 data EnvEntry =
   Value Object |
   Macro Object
+  deriving Show
 
-type Env = M.Map B.ByteString EnvEntry
+type Env = M.Map T.Text EnvEntry
 
+emptyEnv :: Env
+emptyEnv = M.empty
 
 bool :: Bool -> Object
 bool = Boolean
 
 
-symbol :: B.ByteString -> Object
+symbol :: T.Text -> Object
 symbol = Symbol
 
 nil :: Object

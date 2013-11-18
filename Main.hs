@@ -1,3 +1,3 @@
-import qualified Ridge as C
+import qualified Ridge as R
 
-main = C.repl
+main = R.repl

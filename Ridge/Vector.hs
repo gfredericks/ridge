@@ -4,6 +4,8 @@ module Ridge.Vector where
 import Data.Functor
 import qualified Data.IntMap as IM
 
+-- Given that IntMaps know their size I think we could probably do this
+-- with a newtype instead of a record...
 data Vector a = Vector {size :: Int,
                         entries :: IM.IntMap a}
                 deriving (Show, Eq)
@@ -41,7 +43,7 @@ fromList :: [a] -> Vector a
 fromList = foldl (\v x -> conj x v) empty
 
 toList :: Vector a -> [a]
--- is this always sorted!!??
+-- elems returns in sorted order so this works
 toList (Vector {entries = entries}) = IM.elems entries
 
 instance Functor Vector where

@@ -30,6 +30,8 @@ dist/build/ridge/ridge
 ## TODO
 
 - Sets
+- Floats
+- Strings
 - Rest args
 - Multiple function clauses
 - Full data structure functions

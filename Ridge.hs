@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Ridge where
-import Ridge.Core
+import Ridge.RT
 import Ridge.Types
 import qualified Ridge.Vector as RV
 import Control.Exception
@@ -9,6 +9,7 @@ import qualified Data.EDN as EDN
 import qualified Data.Map as M
 import Data.Functor
 import Data.Maybe
+import qualified Data.Text as T
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import System.IO
@@ -28,7 +29,7 @@ readString :: BL.ByteString -> Maybe Object
 readString = EDN.parseMaybe >=> (return . toObject)
 
 evalString :: BL.ByteString -> Object
-evalString = evalExpr builtins . fromJust . readString
+evalString = evalExpr emptyEnv . fromJust . readString
 
 -- Maybe throw if the entry is already present?
 updateEnv :: Env -> EvalResult -> Env
@@ -51,7 +52,9 @@ updateStars env starOne =
 
 
 repl :: IO ()
-repl = repl' builtins
+repl = do
+  List forms <- coreForms
+  repl' (setupEnv emptyEnv forms)
 
 repl' :: Env -> IO ()
 repl' env = do
@@ -60,6 +63,7 @@ repl' env = do
   line <- B.getLine
   case line of
     "quit" -> return ()
+    "reset" -> repl
     _else ->
       case readString (BL.fromStrict line) of
         Just val ->
@@ -84,8 +88,14 @@ repl' env = do
           MacroResult name value -> do
             putStrLn ("macro defined ")
 
+coreForms :: IO Object
+coreForms = do
+  code <- BL.readFile "core.clj"
+  let codeWithParens = "(\n" `BL.append` code `BL.append` "\n)"
+    in return $ fromJust $ readString codeWithParens
 
-
+setupEnv :: Env -> [Object] -> Env
+setupEnv = foldl (\env form -> updateEnv env (eval env form))
 
 -- Evals each expression and returns the value of the last one.
 -- Presumably all but the last one are defs.
@@ -97,8 +107,8 @@ evalCommands env (expr:more) =
 
 data EvalResult =
   ValueResult Object |
-  DefResult B.ByteString Object |
-  MacroResult B.ByteString Object
+  DefResult T.Text Object |
+  MacroResult T.Text Object
 
 eval :: Env -> Object -> EvalResult
 eval env (List [(Symbol "def"), (Symbol name), expr]) =
@@ -132,8 +142,16 @@ evalExpr env (Vector v) = Vector (fmap (evalExpr env) v)
 evalExpr env (emptylist@(List [])) = emptylist
 evalExpr env (List (verb:args)) =
   case verb of
-    Symbol "fn" -> evalExprFn env (args !! 0) (args !! 1)
-    Symbol "if" -> evalExprIf env (args !! 0) (args !! 1) (args !! 2)
+    SymbolNS "RT" rtname ->
+      case M.lookup rtname functions of
+        Just f -> apply f $ map (evalExpr env) args
+        Nothing -> error "Unknown RT function!"
+    Symbol "fn" -> evalExprFn env args
+    Symbol "if" -> case args of
+      [testExpr, trueExpr] ->
+        evalExprIf env testExpr trueExpr Nil
+      [testExpr, trueExpr, falseExpr] ->
+        evalExprIf env testExpr trueExpr falseExpr
     Symbol "quote" -> args !! 0
     Symbol s -> case M.lookup s env of
       Just (Macro (Function f)) -> evalExpr env $ f args
@@ -160,14 +178,40 @@ evalFuncall env verb args =
 -- had some notion of "compiling" the function, we could do that just
 -- once.
 
-evalExprFn :: Env -> Object -> Object -> Object
-evalExprFn env argvec expr =
-  let Vector arglist' = argvec
-      arglist = RV.toList arglist'
-      names = fmap (\ (Symbol name) -> name) arglist
+parseArgList :: [Object] -> [Object] -> Maybe (Env -> Env)
+parseArgList [] args = if null args then Just id else Nothing
+parseArgList [(Symbol "&"),(Symbol restArg)] args =
+  Just $ M.insert restArg (Value (List args))
+parseArgList ((Symbol name):more) [] = Nothing
+parseArgList ((Symbol name):more) (arg:args) = do
+  func <- parseArgList more args
+  return (func . (M.insert name (Value arg)))
+
+-- I tried doing recursion at the haskell level but it hung...
+fixForm = fromJust $ readString "(fn [g] ((fn [x] (g (x x))) (fn [x] (g (x x)))))"
+
+recursabilize :: Object -> Object -> Object
+recursabilize fnForm fnName =
+  List [fixForm, List [(Symbol "fn"), (Vector $ RV.fromList [fnName]), fnForm]]
+
+
+evalExprFn :: Env -> [Object] -> Object
+evalExprFn env (recurName@(Symbol _) : fnArgs) =
+  evalExpr env $ recursabilize (List ((Symbol "fn") : fnArgs)) recurName
+evalExprFn env args@[(Vector arglist'), expr] =
+  -- Normalize (fn [] :foo) to (fn ([] :foo))
+  evalExprFn env [(List args)]
+evalExprFn env clauses =
+  let fns = map makeFn clauses
   in Function (\args ->
-                let env' = foldl (\env (name, value) -> M.insert name (Value value) env) env $ zip names args
-                in evalExpr env' expr)
+                case catMaybes (map ($ args) fns) of
+                  [] -> error "Wrong number of args passed to function!"
+                  (res:_) -> res)
+  where makeFn (List [(Vector arglist'), expr]) args =
+          let arglist = RV.toList arglist'
+          in do
+            envFunc <- parseArgList arglist args
+            return $ evalExpr (envFunc env) expr
 
 -----
 -- if
