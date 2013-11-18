@@ -125,4 +125,4 @@ evalExprIf env cond trueCase falseCase =
         Boolean False -> False
         Nil -> False
         _ -> True
-  in if b then evalExpr env trueCase else evalExpr env falseCase
+  in evalExpr env (if b then trueCase else falseCase)
