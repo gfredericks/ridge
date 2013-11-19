@@ -164,3 +164,15 @@
                   (quote val)
                   (quote val)
                   (list* (quote or) (rest exprs)))))))
+
+(def assoc
+  (fn assoc
+    ([m k v] (RT/mapAssoc m k v))
+    ([m k v & kvs]
+       (apply assoc (assoc m k v) kvs))))
+
+(def dissoc
+  (fn [m & ks] (reduce (fn [m k] (RT/mapDissoc m k)) m ks)))
+
+(def get
+  (fn [m k] (RT/mapGet m k)))
